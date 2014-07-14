@@ -1,0 +1,14 @@
+{application, erlybird,
+ [
+  {description, "An Erlang erlybird library"},
+  {vsn, "1"},
+  {modules, [
+             erlybird
+            ]},
+  {registered, []},
+  {applications, [
+                  kernel,
+                  stdlib
+                 ]},
+  {env, []}
+ ]}.
