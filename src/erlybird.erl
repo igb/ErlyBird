@@ -17,8 +17,6 @@ get_secrets()->
 
 
 
-%https://api.twitter.com/1.1/statuses/user_timeline.json
-
 get_user_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret)->
     
     Params = [lists:flatten([atom_to_list(Key), "=", Value]) || {Key, Value} <- Parameters],
@@ -36,7 +34,7 @@ post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 		    {"Authorization",
 		     lists:append("OAuth ",
 				  oauth:header_params_encode(
-%https://twitter.com/igb/status/769196661545377793
+
 oauth:sign("GET", "https://api.twitter.com/1.1/statuses/retweets/509457288717819904.json", [], Consumer, AccessToken, AccessTokenSecret)
 							    )
 				 )
@@ -48,7 +46,8 @@ oauth:sign("GET", "https://api.twitter.com/1.1/statuses/retweets/509457288717819
 
 % generic wrapper for making get requests
 get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
-    httpc:request(get,
+    {ok,{{"HTTP/1.1",200,"OK"},
+     Headers, Body}} = httpc:request(get,
 		  {Url,
 		   [{"Accept", "*/*"},
 		    {"Host","api.twitter.com"},
@@ -59,7 +58,8 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 		   ]
 		  },
 		  [],
-		  [{headers_as_is, true}]).
+				     [{headers_as_is, true}]),
+    jiffy:decode(Body).
 
 
 
