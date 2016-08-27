@@ -23,9 +23,9 @@ get_user_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret)->
     
     Params = [lists:flatten([atom_to_list(Key), "=", Value]) || {Key, Value} <- Parameters],
 
-    Url=lists:foldr(fun(X, Url) -> lists:flatten([Url, X, "&"]) end, "https://api.twitter.com/1.1/statuses/user_timeline.jsonx?", Params),
+    Url=lists:foldr(fun(X, Url) -> lists:flatten([Url, X, "&"]) end, "https://api.twitter.com/1.1/statuses/user_timeline.json?", Params),
     
-    get_request(Url, Consumer, AccessToken, AccessTokenSecret).
+    get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret).
 
     
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
@@ -47,14 +47,14 @@ oauth:sign("GET", "https://api.twitter.com/1.1/statuses/retweets/509457288717819
 
 
 % generic wrapper for making get requests
-get_request(Url, Consumer, AccessToken, AccessTokenSecret)->
+get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
     httpc:request(get,
 		  {Url,
 		   [{"Accept", "*/*"},
 		    {"Host","api.twitter.com"},
 		    {"Authorization",
 		     lists:append("OAuth ",
-				  oauth:header_params_encode(oauth:sign("GET", Url, [], Consumer, AccessToken, AccessTokenSecret)))
+				  oauth:header_params_encode(oauth:sign("GET", Url, [{atom_to_list(Key), Value} || {Key, Value} <- Parameters], Consumer, AccessToken, AccessTokenSecret)))
 		    }
 		   ]
 		  },
