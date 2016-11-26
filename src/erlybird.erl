@@ -25,7 +25,28 @@ get_user_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret)->
     
     get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret).
 
-    
+get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret)->
+    RequestLog=[current_time_millis()],
+    get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret, RequestLog, [], 0).
+
+get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret, RequestLog, Acc, LastTweetId)->
+    ok.
+ 
+current_time_millis()->   
+    {Mega, Sec, Micro} = os:timestamp(),
+    (Mega*1000000 + Sec)*1000 + round(Micro/1000).
+
+throttle(RequestLog)->
+    ReversedRequestLog = lists:reverse(RequestLog),
+    CurrentTime=current_time_millis(),
+    throttle(RequestLog, CurrentTime).
+
+throttle(ReversedRequestLog,CurrentTime)->
+    FifteenMinutes = 900000,
+    throttle(ReversedRequestLog,CurrentTime, FifteenMinutes, 0).
+
+throttle(ReversedRequestLog,CurrentTime, FifteenMinutes, Counter)->    
+    ok.
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
     httpc:request(get,
 		  {"https://api.twitter.com/1.1/statuses/retweets/509457288717819904.json",
@@ -59,6 +80,7 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 		  },
 		  [],
 				     [{headers_as_is, true}]),
+ io:format("~p~n", [Headers]),
     jiffy:decode(Body).
 
 
