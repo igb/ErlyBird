@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/4,get_user_timeline/4]).
+-export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -26,27 +26,35 @@ get_user_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret)->
     get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret).
 
 get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret)->
-    RequestLog=[current_time_millis()],
-    get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret, RequestLog, [], 0).
 
-get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret, RequestLog, Acc, LastTweetId)->
-    ok.
+    get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret, [], 0).
+
+get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret,  Acc, LastTweetId)->
+   case LastTweetId of
+      0 -> NewParameters = Parameters;
+       _ -> NewParameters = lists:append(Parameters, [{max_id, integer_to_list(LastTweetId - 1)}])
+   end,
+    
+
+	    
+    io:format("last tweet ID: ~p~n", [LastTweetId]),
+    Timeline = get_user_timeline(NewParameters, Consumer, AccessToken, AccessTokenSecret),
+    case Timeline of
+	[] ->
+	    Acc;
+	_ ->
+	    NewAcc=lists:append(Acc, Timeline),
+	    [{Tweet}|_]=lists:reverse(Timeline),
+	    {_, NewLastTweetId}=lists:keyfind(<<"id">>,1, Tweet),
+	    get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret,  NewAcc, NewLastTweetId)
+    end.
+    
  
 current_time_millis()->   
     {Mega, Sec, Micro} = os:timestamp(),
     (Mega*1000000 + Sec)*1000 + round(Micro/1000).
 
-throttle(RequestLog)->
-    ReversedRequestLog = lists:reverse(RequestLog),
-    CurrentTime=current_time_millis(),
-    throttle(RequestLog, CurrentTime).
 
-throttle(ReversedRequestLog,CurrentTime)->
-    FifteenMinutes = 900000,
-    throttle(ReversedRequestLog,CurrentTime, FifteenMinutes, 0).
-
-throttle(ReversedRequestLog,CurrentTime, FifteenMinutes, Counter)->    
-    ok.
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
     httpc:request(get,
 		  {"https://api.twitter.com/1.1/statuses/retweets/509457288717819904.json",
@@ -80,7 +88,7 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 		  },
 		  [],
 				     [{headers_as_is, true}]),
- io:format("~p~n", [Headers]),
+
     jiffy:decode(Body).
 
 
