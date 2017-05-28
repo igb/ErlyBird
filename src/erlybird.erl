@@ -145,6 +145,26 @@ hex_digit(N) when N > 9, N =< 15 ->
     N + $A - 10.
 
 
+create_oauth_header(RequestParameters, Url, ConsumerKey, ConsumerSecret, OauthToken, OauthTokenSecret, OauthNonce, OauthTimestamp, HttpMethod)->
+    
+    OauthSignatureMethod = "HMAC-SHA1",
+    OauthVersion = "1.0",
+    
+    
+    OauthParameters = [ {"oauth_consumer_key", ConsumerKey},
+			{"oauth_nonce",OauthNonce},
+			{"oauth_signature_method", OauthSignatureMethod},
+			{"oauth_timestamp", OauthTimestamp},
+			{"oauth_token", OauthToken},
+			{"oauth_version",OauthVersion}],
+    SigningParameters = lists:append(OauthParameters, RequestParameters),
+    OauthSignature = sign(SigningParameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod),
+    SignedOauthParameters = lists:append(OauthParameters, [{"oauth_signature", OauthSignature}]),
+    create_oauth_header_string(SignedOauthParameters).
+
+    
+
+
 sign(Parameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod)->
     ParameterString = create_parameter_string(Parameters),
     SignatureBaseString = create_signature_base_string(ParameterString, Url, HttpMethod),
@@ -162,6 +182,20 @@ create_parameter_string(Parameters)->
 			end
 		end,
 		[],
+		SortedEncodedParamters).
+
+
+create_oauth_header_string(Parameters)->
+    EncodedParameters = encode_parameters(Parameters),
+    SortedEncodedParamters = lists:keysort(1, EncodedParameters),
+    lists:foldl(fun({X, Y}, Acc) ->
+			case Acc of
+			    "OAuth " ->
+				string:concat(Acc, string:concat(string:concat(X, "="), string:concat(string:concat("\"", Y), "\"")));
+			    _ -> string:concat(Acc, string:concat(string:concat(string:concat(", ", X), "="), string:concat(string:concat("\"", Y), "\"")))
+			end
+		end,
+		"OAuth ",
 		SortedEncodedParamters).
 			
 
@@ -197,6 +231,30 @@ get_test_parameters()->
 		  {"oauth_version", "1.0"}
 		 ],
     Parameters.
+
+create_oauth_header_string_test()->
+    OauthHeaderString = create_oauth_header_string([{"foo", "bar"}, {"bing", "boo"}]),
+    ExpectedOauthHeaderString = "OAuth bing=\"boo\", foo=\"bar\"",
+     ?assert(OauthHeaderString  =:= ExpectedOauthHeaderString).
+
+create_oauth_header_test()->
+    RequestParameters = [
+			 {"include_entities", "true"},
+			 {"status", "Hello Ladies + Gentlemen, a signed OAuth request!"}],
+    Url = "https://api.twitter.com/1/statuses/update.json",
+    ConsumerKey =  "xvz1evFS4wEEPTGEFPHBog",
+    ConsumerSecret = "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
+    OauthToken =  "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb",
+    OauthTokenSecret = "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
+    OauthNonce = "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg",
+    OauthTimestamp = "1318622958",
+    HttpMethod="Post",
+    OauthHeader  = create_oauth_header(RequestParameters, Url, ConsumerKey, ConsumerSecret, OauthToken, OauthTokenSecret, OauthNonce, OauthTimestamp, HttpMethod),
+    ExpectedOauthHeader = "OAuth oauth_consumer_key=\"xvz1evFS4wEEPTGEFPHBog\", oauth_nonce=\"kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg\", oauth_signature=\"tnnArxj06cWHq44gCs1OSKk%2FjLY%3D\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"1318622958\", oauth_token=\"370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb\", oauth_version=\"1.0\"",
+    io:format("~n~p~n", [OauthHeader]),
+    io:format("~n~p~n", [ExpectedOauthHeader]),
+
+    ?assert(OauthHeader  =:= ExpectedOauthHeader).
 
 get_signing_key_test()->
     ConsumerSecret = "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
