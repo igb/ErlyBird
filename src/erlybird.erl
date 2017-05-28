@@ -110,6 +110,10 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
     jiffy:decode(Body).
 
 
+
+
+%roll yer own oauth
+
 escape_uri([C | Cs]) when C >= $a, C =< $z ->
         [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C >= $A, C =< $Z ->
@@ -141,22 +145,119 @@ hex_digit(N) when N > 9, N =< 15 ->
     N + $A - 10.
 
 
+sign(Parameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod)->
+    ParameterString = create_parameter_string(Parameters),
+    SignatureBaseString = create_signature_base_string(ParameterString, Url, HttpMethod),
+    SigningKey= get_signing_key(ConsumerSecret, OauthTokenSecret),
+    base64:encode_to_string(crypto:hmac(sha, SigningKey, SignatureBaseString)).
+
+create_parameter_string(Parameters)->
+    EncodedParameters = encode_parameters(Parameters),
+    SortedEncodedParamters = lists:keysort(1, EncodedParameters),
+    lists:foldl(fun({X, Y}, Acc) ->
+			case Acc of
+			    [] ->
+				string:concat(string:concat(X, "="), Y);
+			    _ -> string:concat(Acc, string:concat(string:concat(string:concat("&", X), "="), Y))
+			end
+		end,
+		[],
+		SortedEncodedParamters).
+			
+
+create_signature_base_string(ParameterString, Url, HttpMethod)->
+
+    UpperCaseHttpMethod = string:to_upper(HttpMethod),
+    SignatureBaseStringPrefix = string:concat(UpperCaseHttpMethod, string:concat("&", escape_uri(Url))),
+    string:concat(string:concat(SignatureBaseStringPrefix, "&"), escape_uri(ParameterString)).
+    
+    
+get_signing_key(ConsumerSecret, OauthTokenSecret)->					      
+    string:concat(string:concat(escape_uri(ConsumerSecret), "&"), escape_uri(OauthTokenSecret)).
+    
+  
+encode_parameters(Parameters)->
+    lists:map(fun({X,Y}) ->
+		      {escape_uri(X), escape_uri(Y)}
+	      end,
+	      Parameters).
+
+
 -ifdef(TEST).
-post_signature_test()->
+
+get_test_parameters()->
+    Parameters = [
+		  {"include_entities", "true"},
+		  {"status", "Hello Ladies + Gentlemen, a signed OAuth request!"},
+		  {"oauth_consumer_key", "xvz1evFS4wEEPTGEFPHBog"},
+		  {"oauth_nonce", "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg"},
+		  {"oauth_signature_method", "HMAC-SHA1"},
+		  {"oauth_timestamp", "1318622958"},
+		  {"oauth_token", "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb"},
+		  {"oauth_version", "1.0"}
+		 ],
+    Parameters.
+
+get_signing_key_test()->
+    ConsumerSecret = "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
+    OauthTokenSecret = "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
+    ExpectedSigningKey = "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw&LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
+    SigningKey = get_signing_key(ConsumerSecret, OauthTokenSecret),
+     ?assert(SigningKey  =:= ExpectedSigningKey).
+   
+
+create_parameter_string_test()->
+    ExpectedParameterString = "include_entities=true&oauth_consumer_key=xvz1evFS4wEEPTGEFPHBog&oauth_nonce=kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg&oauth_signature_method=HMAC-SHA1&oauth_timestamp=1318622958&oauth_token=370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb&oauth_version=1.0&status=Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21",
+    Parameters = get_test_parameters(),
+    ParameterString = create_parameter_string(Parameters),
+     ?assert(ParameterString  =:= ExpectedParameterString).
+
+create_signature_base_string_test()->
+    ExpectedSignatureBaseString = "POST&https%3A%2F%2Fapi.twitter.com%2F1%2Fstatuses%2Fupdate.json&include_entities%3Dtrue%26oauth_consumer_key%3Dxvz1evFS4wEEPTGEFPHBog%26oauth_nonce%3DkYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg%26oauth_signature_method%3DHMAC-SHA1%26oauth_timestamp%3D1318622958%26oauth_token%3D370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb%26oauth_version%3D1.0%26status%3DHello%2520Ladies%2520%252B%2520Gentlemen%252C%2520a%2520signed%2520OAuth%2520request%2521",
+
+    Parameters = get_test_parameters(),
+    SignatureBaseString = create_signature_base_string(create_parameter_string(Parameters), "https://api.twitter.com/1/statuses/update.json", "post"),
+    io:format("~n~p~n", [SignatureBaseString]),
+    io:format("~n~p~n", [ExpectedSignatureBaseString]),
+    ?assert(SignatureBaseString  =:= ExpectedSignatureBaseString).
+
+encode_parameters_test()->
+
+    Parameters = get_test_parameters(),
+
+    ExpectedParameters = [
+			  {"include_entities", "true"},
+			  {"status", "Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21"},
+			  {"oauth_consumer_key", "xvz1evFS4wEEPTGEFPHBog"},
+			  {"oauth_nonce", "kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg"},
+			  {"oauth_signature_method", "HMAC-SHA1"},
+			  {"oauth_timestamp", "1318622958"},
+			  {"oauth_token", "370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb"},
+			  {"oauth_version", "1.0"}
+			 ],
+
+    EncodedParameters=encode_parameters(Parameters),
+    ?assert(EncodedParameters  =:= ExpectedParameters).
+    
+
+
+
+
+escape_uri_test()->
     Status="Hello Ladies + Gentlemen, a signed OAuth request!",
-    OauthConsumerKey="xvz1evFS4wEEPTGEFPHBog",
-    OauthNonce="kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg",
-    OauthSignatureMethod="HMAC-SHA1",
-    OauthTimestamp="1318622958",
-    OauthToken="370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb",
-    OauthVersion="1.0",
     EscapedStatus = escape_uri(Status),
     TestEncodedValue="Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21",
-    io:fwrite("~n"),
-    io:fwrite("~s~n", [EscapedStatus]),
-    io:fwrite("~s~n", [TestEncodedValue]),
-   % EscapedStatus="Hello%20Ladies%20%2B%20Gentlemen%2C%20a%20signed%20OAuth%20request%21",
-    ?assert(EscapedStatus  =:= TestEncodedValue),
-    ok.
+    ?assert(EscapedStatus  =:= TestEncodedValue).
+
+sign_test()->
+    Parameters = get_test_parameters(),
+    ConsumerSecret = "kAcSOqF21Fu85e7zjz7ZN2U4ZRhfV3WpwPAoE3Z7kBw",
+    OauthTokenSecret = "LswwdoUaIvS8ltyTt5jkRh4J50vUPVVHtR2YPi5kE",
+    Url = "https://api.twitter.com/1/statuses/update.json",
+    HttpMethod = "post",
+    Signature = sign(Parameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod),
+    ExpectedSignature = "tnnArxj06cWHq44gCs1OSKk/jLY=",
+    ?assert(Signature  =:= ExpectedSignature).
     
+
 -endif.
