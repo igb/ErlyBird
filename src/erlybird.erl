@@ -62,31 +62,37 @@ current_time_millis()->
     {Mega, Sec, Micro} = os:timestamp(),
     (Mega*1000000 + Sec)*1000 + round(Micro/1000).
 
+current_time_seconds()->
+    {MegaSecs, Secs, MicroSecs} = os:timestamp(),
+    MegaSecs * 1000000 + Secs.
+
+get_oauth_timestamp()->
+    lists:flatten(io_lib:format("~p", [current_time_seconds()])).
+
+get_oauth_nonce()->
+    base64:encode_to_string(list_to_binary(integer_to_list(current_time_millis()))).
+    
 
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
     Status="status=test",
     io:format(Status),
-    BodyHash = base64:encode_to_string(crypto:hash(sha, Status)),
-    io:format(BodyHash),
+    {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
+
     Headers =  [{"Accept", "*/*"},
 		    {"Host","api.twitter.com"},
 		    {"Content-Type","application/x-www-form-urlencoded"},
 		    {"Authorization",
-		     lists:append("OAuth ",
-				  oauth:header_params_encode(
+		     create_oauth_header([{"status", "test"}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
 
-oauth:sign("POST", "https://api.twitter.com/1.1/statuses/update.json", [{"status", "test"}], Consumer, AccessToken, AccessTokenSecret)
-							    )
-				 )
-		    }
+
 		   ],
     
 io:fwrite("~n~p~n", [Headers]),
        httpc:request(post,
-		  {"http://api.twitter.com/1.1/statuses/update.json",
+		  {"https://api.twitter.com/1.1/statuses/update.json?status=test",
 		    Headers,
                     "application/x-www-form-urlencoded",
-                    Status
+                    []
 		  }, [], [{headers_as_is, true}]).
 
 
