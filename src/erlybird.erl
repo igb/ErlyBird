@@ -74,7 +74,10 @@ get_oauth_nonce()->
     
 
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
-    Status="status=test",
+
+    EscapedTweet= escape_uri(Tweet),
+    Status=string:concat("status=", EscapedTweet),
+
     io:format(Status),
     {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
 
@@ -82,14 +85,14 @@ post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 		    {"Host","api.twitter.com"},
 		    {"Content-Type","application/x-www-form-urlencoded"},
 		    {"Authorization",
-		     create_oauth_header([{"status", "test"}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
+		     create_oauth_header([{"status", Tweet}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
 
 
 		   ],
     
 io:fwrite("~n~p~n", [Headers]),
        httpc:request(post,
-		  {"https://api.twitter.com/1.1/statuses/update.json?status=test",
+		  {string:concat("https://api.twitter.com/1.1/statuses/update.json?", Status),
 		    Headers,
                     "application/x-www-form-urlencoded",
                     []
