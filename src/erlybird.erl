@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5]).
+-export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -72,6 +72,9 @@ get_oauth_timestamp()->
 get_oauth_nonce()->
     base64:encode_to_string(list_to_binary(integer_to_list(current_time_millis()))).
     
+post(Tweet) -> 
+    {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
+    post(Tweet, Consumer, AccessToken, AccessTokenSecret).
 
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 
@@ -98,10 +101,29 @@ io:fwrite("~n~p~n", [Headers]),
                     []
 		  }, [], [{headers_as_is, true}]).
 
+get_tweet(TweetId)->
+    get_tweet(TweetId,[]).
+get_tweet(TweetId, Parameters)->
+    {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
+    get_tweet(TweetId, Parameters, Consumer, AccessToken, AccessTokenSecret).
 
-
+get_tweet(TweetId, Parameters, Consumer, AccessToken, AccessTokenSecret)->
+    ParametersWithId=lists:append(Parameters, [{"id", TweetId}]),
+    Url = string:concat("https://api.twitter.com/1.1/statuses/show.json?", create_parameter_string(ParametersWithId)),
+    get_request(Url, ParametersWithId, Consumer, AccessToken, AccessTokenSecret).
+    
+										
+key_to_string(Key)->
+    case is_atom(Key) of
+	true ->
+	    atom_to_list(Key);
+	false  ->
+	    Key
+end.
+    
 % generic wrapper for making get requests
 get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
+
     {ok,{{"HTTP/1.1",200,"OK"},
      Headers, Body}} = httpc:request(get,
 		  {Url,
@@ -109,7 +131,7 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 		    {"Host","api.twitter.com"},
 		    {"Authorization",
 		     lists:append("OAuth ",
-				  oauth:header_params_encode(oauth:sign("GET", Url, [{atom_to_list(Key), Value} || {Key, Value} <- Parameters], Consumer, AccessToken, AccessTokenSecret)))
+				  oauth:header_params_encode(oauth:sign("GET", Url, [{key_to_string(Key), Value} || {Key, Value} <- Parameters], Consumer, AccessToken, AccessTokenSecret)))
 		    }
 		   ]
 		  },
