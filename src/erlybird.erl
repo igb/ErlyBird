@@ -124,21 +124,24 @@ end.
 % generic wrapper for making get requests
 get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 
-    {ok,{{"HTTP/1.1",200,"OK"},
-     Headers, Body}} = httpc:request(get,
-		  {Url,
-		   [{"Accept", "*/*"},
+    Response= httpc:request(get,
+			    {Url,
+			     [{"Accept", "*/*"},
 		    {"Host","api.twitter.com"},
-		    {"Authorization",
-		     lists:append("OAuth ",
-				  oauth:header_params_encode(oauth:sign("GET", Url, [{key_to_string(Key), Value} || {Key, Value} <- Parameters], Consumer, AccessToken, AccessTokenSecret)))
-		    }
-		   ]
-		  },
-		  [],
-				     [{headers_as_is, true}]),
+			      {"Authorization",
+			       lists:append("OAuth ",
+					    oauth:header_params_encode(oauth:sign("GET", Url, [{key_to_string(Key), Value} || {Key, Value} <- Parameters], Consumer, AccessToken, AccessTokenSecret)))
+			      }
+			     ]
+			    },
+			    [],
+			    [{headers_as_is, true}]),
+        case Response of 
+	    {ok,{{"HTTP/1.1",200,"OK"}, Headers, Body}} -> jiffy:decode(Body);
+	    {ok,{{"HTTP/1.1",StatusCode,StatusMessage}, Headers, Body}} -> jiffy:decode(Body)
+	end.
 
-    jiffy:decode(Body).
+    
 
 
 

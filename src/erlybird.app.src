@@ -1,7 +1,7 @@
 {application, erlybird,
  [
   {description, "An Erlang Twitter API library"},
-  {vsn, "1.2"},
+  {vsn, "1.3"},
   {modules, [
              erlybird
             ]},
