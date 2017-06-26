@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5]).
+-export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -149,9 +149,10 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 %roll yer own oauth
 
 escape_uri([C | Cs]) when C >= $a, C =< $z ->
-        [C | escape_uri(Cs)];
+%    io:format("a-z:~p~n",[C]),
+    [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C >= $A, C =< $Z ->
-	[C | escape_uri(Cs)];
+    [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C >= $0, C =< $9 ->
     [C | escape_uri(Cs)];
 escape_uri([C = $. | Cs]) ->
@@ -161,10 +162,8 @@ escape_uri([C = $- | Cs]) ->
 escape_uri([C = $_ | Cs]) ->
     [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C > 16#7f ->
-    %% This assumes that characters are at most 16 bits wide.
-    escape_byte(((C band 16#c0) bsr 6) + 16#c0)
-	++ escape_byte(C band 16#3f + 16#80)
-	++ escape_uri(Cs);
+    HexStr = integer_to_list(C, 16),
+    lists:flatten([$%, HexStr]) ++ escape_uri(Cs);
 escape_uri([C | Cs]) ->
     escape_byte(C) ++ escape_uri(Cs);
 escape_uri([]) ->
@@ -331,8 +330,16 @@ encode_parameters_test()->
     EncodedParameters=encode_parameters(Parameters),
     ?assert(EncodedParameters  =:= ExpectedParameters).
     
+encode_unicode_test()->
 
+    SamsungTm="A cropped view of a Samsung™ monitor. The visible portion of the screen displays the Windows© 7 Professional logo.",	     
+    EncodedSamsungTm=escape_uri(SamsungTm),
+    TestEncodedSamsungTm="A%20cropped%20view%20of%20a%20Samsung%E2%84%A2%20monitor.%20The%20visible%20portion%20of%20the%20screen%20displays%20the%20Windows%C2%A9%207%20Professional%20logo.",
+    io:format("~p", [EncodedSamsungTm]),
+    io:format("~s", [TestEncodedSamsungTm]),
 
+    ?assert(EncodedSamsungTm  =:= TestEncodedSamsungTm).
+    
 
 
 escape_uri_test()->
