@@ -85,20 +85,16 @@ post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
     {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
 
     Headers =  [{"Accept", "*/*"},
-		    {"Host","api.twitter.com"},
-		    {"Content-Type","application/x-www-form-urlencoded"},
-		    {"Authorization",
-		     create_oauth_header([{"status", Tweet}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
-
-
-		   ],
-    
-io:fwrite("~n~p~n", [Headers]),
-       httpc:request(post,
+		{"Host","api.twitter.com"},
+		{"Content-Type","application/x-www-form-urlencoded"},
+		{"Authorization",
+		 create_oauth_header([{"status", Tweet}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
+	       ],
+    httpc:request(post,
 		  {string:concat("https://api.twitter.com/1.1/statuses/update.json?", Status),
-		    Headers,
-                    "application/x-www-form-urlencoded",
-                    []
+		   Headers,
+		   "application/x-www-form-urlencoded",
+		   []
 		  }, [], [{headers_as_is, true}]).
 
 get_tweet(TweetId)->
@@ -123,19 +119,19 @@ end.
     
 % generic wrapper for making get requests
 get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
+    [RequestUrl|_]=string:tokens(Url, "?"),
+    {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
 
     Response= httpc:request(get,
 			    {Url,
 			     [{"Accept", "*/*"},
-		    {"Host","api.twitter.com"},
+			      {"Host","api.twitter.com"},
 			      {"Authorization",
-			       lists:append("OAuth ",
-					    oauth:header_params_encode(oauth:sign("GET", Url, [{key_to_string(Key), Value} || {Key, Value} <- Parameters], Consumer, AccessToken, AccessTokenSecret)))
-			      }
-			     ]
+			       create_oauth_header(Parameters, RequestUrl, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Get")}
+			    ]
 			    },
-			    [],
-			    [{headers_as_is, true}]),
+    [],
+    [{headers_as_is, true}]),
         case Response of 
 	    {ok,{{"HTTP/1.1",200,"OK"}, Headers, Body}} -> jiffy:decode(Body);
 	    {ok,{{"HTTP/1.1",StatusCode,StatusMessage}, Headers, Body}} -> jiffy:decode(Body)
