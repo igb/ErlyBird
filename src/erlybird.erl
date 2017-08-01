@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1]).
+-export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -71,7 +71,154 @@ get_oauth_timestamp()->
 
 get_oauth_nonce()->
     base64:encode_to_string(list_to_binary(integer_to_list(current_time_millis()))).
+
+add_params_to_url(Url, Params)->
+    append_params_to_url( string:concat(Url, "?"), Params).
+
+append_params_to_url(Url, [H|T])->  
+    case lists:last(Url) of
+	63 ->
+	    NewUrlBase = Url;
+	_ ->
+	    NewUrlBase = string:concat(Url, "&")
+    end,
+    {ParamName, ParamValue}=H,
+    append_params_to_url(string:concat(string:concat(string:concat(NewUrlBase, escape_uri(ParamName)), "="), escape_uri(ParamValue)), T); 
+append_params_to_url(Url, [])->
+    Url.
+
+
+append_params_to_body(Body, [H|T])->  
+    case length(Body) of
+	0 ->
+	    NewBodyBase = [];
+	_ ->
+	    NewBodyBase = string:concat(Body, "&")
+    end,
+    {ParamName, ParamValue}=H,
+    append_params_to_url(string:concat(string:concat(string:concat(NewBodyBase, escape_uri(ParamName)), "="), escape_uri(ParamValue)), T); 
+append_params_to_body(Body, [])->
+    Body.
+
+
+upload(Media)->
+    {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
+    upload(Media,  Consumer, AccessToken, AccessTokenSecret). 
+
+upload(Media, Consumer, AccessToken, AccessTokenSecret)-> 
+
+        {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
+
+
+    MediaId = upload_init(Media, Consumer, AccessToken, AccessTokenSecret),
+    io:format("~p~n", [MediaId]),
+
+    Chunks=chunk(Media, 512),
+    upload_append(Chunks, MediaId, 0, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret).
     
+   
+chunk(BinaryMedia, ChunkSize)->    
+    chunk(BinaryMedia, ChunkSize, []).
+chunk(BinaryMedia, ChunkSize, Chunks)->
+    case byte_size(BinaryMedia) < ChunkSize of 
+	true ->
+	    lists:append(Chunks, [base64:encode_to_string(BinaryMedia)]);
+	false ->
+	    {H,T}=split_binary(BinaryMedia, ChunkSize),
+	    NewChunks=lists:append(Chunks, [base64:encode_to_string(H)]), 
+	    chunk(T, ChunkSize, NewChunks)
+    end.
+
+generate_multipart__body(Params, Boundary)->
+    generate_multipart__body(Params, Boundary, []).
+
+generate_multipart__body([H|T], Boundary, Acc)->
+    {Name, Value}=H,
+    NewAcc=string:concat(Acc,string:concat(string:concat(string:concat(string:concat(string:concat(Boundary, "\nContent-Disposition: form-data; name=\""), Name),"\"\n\n"), Value), "\n")),
+    generate_multipart__body(T, Boundary, NewAcc);
+generate_multipart__body([], Boundary, Acc) ->
+    string:concat(Acc, Boundary).
+
+    
+
+upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret)-> 
+
+
+
+
+    Params = [{"command", "APPEND"},
+	      {"media_id", MediaId},
+	      {"media_data", MediaData},
+	      {"segment_index", integer_to_list(SegmentId)}],
+    
+    Url =  "https://upload.twitter.com/1.1/media/upload.json",
+
+
+
+    Headers =  [{"Accept", "*/*"},
+		{"Host","upload.twitter.com"},
+		{"Content-Type","multipart/form-data; boundary=fooo"},
+		{"Authorization",
+		 create_oauth_header([], %remove params
+				    Url,
+				     ConsumerKey,
+				     ConsumerSecret,
+				     AccessToken, 
+				     AccessTokenSecret, 
+				     get_oauth_nonce(),
+				     get_oauth_timestamp(), 
+				     "Post")
+		}],
+    io:format("~s~n", [generate_multipart__body(Params, "--fooo")]),
+    {ok, Response} = httpc:request(post,
+				   {Url,
+				    Headers,
+				    "multipart/form-data",
+				    generate_multipart__body(Params, "--fooo")
+				   }, [], [{headers_as_is, true}]),
+    io:format("~p~n", [Response]),
+    "x" = Response,
+    upload_append(T, MediaId, SegmentId + 1, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret);
+
+upload_append([], MediaId, _, _, _,_,_)-> 
+    {ok, MediaId}.
+    
+upload_init(Media, Consumer, AccessToken, AccessTokenSecret)-> 
+
+    {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
+    TotalBytes =  lists:flatten(io_lib:format("~p", [byte_size(Media)])),
+
+    
+    Headers =  [{"Accept", "*/*"},
+		{"Host","upload.twitter.com"},
+		{"Content-Type","application/x-www-form-urlencoded"},
+		{"Authorization",
+		 create_oauth_header([{"command", "INIT"},
+				      {"total_bytes", TotalBytes},
+				      {"media_type", "img/png"}],
+				     "https://upload.twitter.com/1.1/media/upload.json",
+				     ConsumerKey,
+				     ConsumerSecret,
+				     AccessToken, 
+				     AccessTokenSecret, 
+				     get_oauth_nonce(),
+				     get_oauth_timestamp(), 
+				     "Post")
+		}],
+
+    {ok, Response} = httpc:request(post,
+			     {string:concat(string:concat("https://upload.twitter.com/1.1/media/upload.json?command=INIT", string:concat("&total_bytes=", TotalBytes)), "&media_type=img%2Fpng"),
+			      Headers,
+			      "application/x-www-form-urlencoded",
+			      []
+			     }, [], [{headers_as_is, true}]),
+    {_,_, Body}=Response,
+    {[{_,_},{<<"media_id_string">>,MediaId}, _]}=jiffy:decode(Body),
+    binary_to_list(MediaId).
+
+
+
+
 post(Tweet) -> 
     {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
     post(Tweet, Consumer, AccessToken, AccessTokenSecret).
@@ -80,8 +227,7 @@ post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 
     EscapedTweet= escape_uri(Tweet),
     Status=string:concat("status=", EscapedTweet),
-
-    io:format(Status),
+   
     {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
 
     Headers =  [{"Accept", "*/*"},
@@ -90,7 +236,7 @@ post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 		{"Authorization",
 		 create_oauth_header([{"status", Tweet}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
 	       ],
-    httpc:request(post,
+            httpc:request(post,
 		  {string:concat("https://api.twitter.com/1.1/statuses/update.json?", Status),
 		   Headers,
 		   "application/x-www-form-urlencoded",
@@ -157,6 +303,8 @@ escape_uri([C = $- | Cs]) ->
     [C | escape_uri(Cs)];
 escape_uri([C = $_ | Cs]) ->
     [C | escape_uri(Cs)];
+escape_uri([C = $* | Cs]) ->
+    [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C > 16#7f ->
     HexStr = integer_to_list(C, 16),
     lists:flatten([$%, HexStr]) ++ escape_uri(Cs);
@@ -198,6 +346,7 @@ sign(Parameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod)->
     ParameterString = create_parameter_string(Parameters),
     SignatureBaseString = create_signature_base_string(ParameterString, Url, HttpMethod),
     SigningKey= get_signing_key(ConsumerSecret, OauthTokenSecret),
+    io:format("~p~n",[crypto:hmac(sha, SigningKey, SignatureBaseString)]),
     base64:encode_to_string(crypto:hmac(sha, SigningKey, SignatureBaseString)).
 
 create_parameter_string(Parameters)->
@@ -335,6 +484,16 @@ encode_unicode_test()->
     io:format("~s", [TestEncodedSamsungTm]),
 
     ?assert(EncodedSamsungTm  =:= TestEncodedSamsungTm).
+
+encode_amp_test()->
+
+    Amp="An inscription in the aforementioned book reads \"For Ian\nHappy reading &\nsuccess to crime\n\n*illegible signature*\"",	     
+    EncodedAmp=escape_uri(Amp),
+    TestEncodedAmp="An%20inscription%20in%20the%20aforementioned%20book%20reads%20%22For%20Ian%0AHappy%20reading%20%26%0Asuccess%20to%20crime%0A%0A*illegible%20signature*%22",
+    io:format("~s~n", [EncodedAmp]),
+    io:format("~s~n", [TestEncodedAmp]),
+
+    ?assert(EncodedAmp  =:= TestEncodedAmp).
     
 
 
@@ -354,5 +513,7 @@ sign_test()->
     ExpectedSignature = "tnnArxj06cWHq44gCs1OSKk/jLY=",
     ?assert(Signature  =:= ExpectedSignature).
     
-
+add_params_to_url_test()->
+    ?assert(add_params_to_url("http://www.hccp.org",[{"foo", "bar/png"}, {"blue", "red"}, {"glarg", "bling"}]) =:= "http://www.hccp.org?foo=bar%2Fpng&blue=red&glarg=bling").
+    
 -endif.
