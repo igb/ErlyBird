@@ -260,8 +260,13 @@ key_to_string(Key)->
 	true ->
 	    atom_to_list(Key);
 	false  ->
-	    Key
-end.
+	    case is_number(Key) of
+		true ->
+		    integer_to_list(Key);
+		false  ->
+		    Key
+	    end
+    end.
     
 % generic wrapper for making get requests
 get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
@@ -390,7 +395,7 @@ get_signing_key(ConsumerSecret, OauthTokenSecret)->
   
 encode_parameters(Parameters)->
     lists:map(fun({X,Y}) ->
-		      {escape_uri(X), escape_uri(Y)}
+		      {escape_uri(key_to_string(X)), escape_uri(key_to_string(Y))}
 	      end,
 	      Parameters).
 
@@ -409,6 +414,16 @@ get_test_parameters()->
 		  {"oauth_version", "1.0"}
 		 ],
     Parameters.
+
+encode_atom_test()->
+    EncodedUri = encode_parameters([{foo, bar}]),
+    io:format("~p~n", [EncodedUri]),
+     ?assert(EncodedUri  =:=  [{"foo","bar"}]).
+
+encode_int_test()->
+    EncodedUri = encode_parameters([{foo, 1}]),
+    io:format("~p~n", [EncodedUri]),
+     ?assert(EncodedUri  =:=  [{"foo","1"}]).
 
 create_oauth_header_string_test()->
     OauthHeaderString = create_oauth_header_string([{"foo", "bar"}, {"bing", "boo"}]),
