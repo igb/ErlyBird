@@ -148,7 +148,7 @@ upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, Ac
 
     Params = [{"command", "APPEND"},
 	      {"media_id", MediaId},
-	      {"media_data", MediaData},
+	      {"media", base64:decode_to_string(MediaData)},
 	      {"segment_index", integer_to_list(SegmentId)}],
     
     Url =  "https://upload.twitter.com/1.1/media/upload.json",
@@ -307,8 +307,6 @@ escape_uri([C = $. | Cs]) ->
 escape_uri([C = $- | Cs]) ->
     [C | escape_uri(Cs)];
 escape_uri([C = $_ | Cs]) ->
-    [C | escape_uri(Cs)];
-escape_uri([C = $* | Cs]) ->
     [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C > 16#7f ->
     HexStr = integer_to_list(C, 16),
@@ -504,13 +502,21 @@ encode_amp_test()->
 
     Amp="An inscription in the aforementioned book reads \"For Ian\nHappy reading &\nsuccess to crime\n\n*illegible signature*\"",	     
     EncodedAmp=escape_uri(Amp),
-    TestEncodedAmp="An%20inscription%20in%20the%20aforementioned%20book%20reads%20%22For%20Ian%0AHappy%20reading%20%26%0Asuccess%20to%20crime%0A%0A*illegible%20signature*%22",
+    TestEncodedAmp="An%20inscription%20in%20the%20aforementioned%20book%20reads%20%22For%20Ian%0AHappy%20reading%20%26%0Asuccess%20to%20crime%0A%0A%2Aillegible%20signature%2A%22",
     io:format("~s~n", [EncodedAmp]),
     io:format("~s~n", [TestEncodedAmp]),
 
     ?assert(EncodedAmp  =:= TestEncodedAmp).
     
+encode_asterisk_test()->
+    Asterisk="The letters \"*EGD\" are scrawled on an escalator railing.",
+    EncodedAsterisk=escape_uri(Asterisk),
+    TestEncodedAsterisk="The%20letters%20%22%2AEGD%22%20are%20scrawled%20on%20an%20escalator%20railing.",
+    io:format("~s~n", [EncodedAsterisk]),
+    io:format("~s~n", [TestEncodedAsterisk]),
 
+    ?assert(EncodedAsterisk =:= TestEncodedAsterisk).
+    
 
 escape_uri_test()->
     Status="Hello Ladies + Gentlemen, a signed OAuth request!",
