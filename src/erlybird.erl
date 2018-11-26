@@ -111,10 +111,13 @@ upload(Media, Consumer, AccessToken, AccessTokenSecret)->
 
 
     MediaId = upload_init(Media, Consumer, AccessToken, AccessTokenSecret),
-    io:format("~p~n", [MediaId]),
 
-    Chunks=chunk(Media, 512),
-    upload_append(Chunks, MediaId, 0, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret).
+
+    Chunks=chunk(Media, 10485760),
+
+    {ok, MediaId} = upload_append(Chunks, MediaId, 0, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret),
+    MediaId = upload_finalize(MediaId, Consumer, AccessToken, AccessTokenSecret),
+    {ok, MediaId}.
     
    
 chunk(BinaryMedia, ChunkSize)->    
@@ -134,10 +137,18 @@ generate_multipart__body(Params, Boundary)->
 
 generate_multipart__body([H|T], Boundary, Acc)->
     {Name, Value}=H,
-    NewAcc=string:concat(Acc,string:concat(string:concat(string:concat(string:concat(string:concat(Boundary, "\nContent-Disposition: form-data; name=\""), Name),"\"\n\n"), Value), "\n")),
+    Prefix = string:concat(Acc, string:concat(string:concat(string:concat(string:concat("--", Boundary), "\r\nContent-Disposition: form-data; name=\""), Name), "\"")),
+    case Name of
+	"media" ->
+	    MediaAcc=string:concat(Prefix,"; filename=\"foo1.png\"\nContent-Type: application/octet-stream");
+	_ ->
+	    MediaAcc=Prefix
+    end,
+									       
+    NewAcc = string:concat(string:concat(MediaAcc, string:concat("\r\n\r\n", Value)), "\r\n"),
     generate_multipart__body(T, Boundary, NewAcc);
 generate_multipart__body([], Boundary, Acc) ->
-    string:concat(Acc, Boundary).
+    string:concat(Acc, string:concat(string:concat("--", Boundary), "--\r\n")).
 
     
 
@@ -145,19 +156,26 @@ upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, Ac
 
 
 
-
-    Params = [{"command", "APPEND"},
+    
+    Params = [{"segment_index", integer_to_list(SegmentId)},
 	      {"media_id", MediaId},
-	      {"media", base64:decode_to_string(MediaData)},
-	      {"segment_index", integer_to_list(SegmentId)}],
+	      {"command", "APPEND"},
+	      {"media", base64:decode_to_string(MediaData)}
+	      ],
     
     Url =  "https://upload.twitter.com/1.1/media/upload.json",
+
+%    Url =  "http://127.0.0.1:8080/postest/uploadtest",
+
+    MultiPartBody=generate_multipart__body(Params, "00Twurl788615393766630399lruwT99"),
+    
+
 
 
 
     Headers =  [{"Accept", "*/*"},
 		{"Host","upload.twitter.com"},
-		{"Content-Type","multipart/form-data; boundary=fooo"},
+		{"Content-Type","multipart/form-data; boundary=\"00Twurl788615393766630399lruwT99\""},
 		{"Authorization",
 		 create_oauth_header([], %remove params
 				    Url,
@@ -168,21 +186,56 @@ upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, Ac
 				     get_oauth_nonce(),
 				     get_oauth_timestamp(), 
 				     "Post")
-		}],
-    io:format("~s~n", [generate_multipart__body(Params, "--fooo")]),
+		},
+	       {"Content-Length", integer_to_list(length(MultiPartBody))}],
+
+
     {ok, Response} = httpc:request(post,
 				   {Url,
 				    Headers,
 				    "multipart/form-data",
-				    generate_multipart__body(Params, "--fooo")
-				   }, [], [{headers_as_is, true}]),
-    io:format("~p~n", [Response]),
-    "x" = Response,
+				    MultiPartBody
+				   }, [], [{headers_as_is, true},{body_format, binary}]),
+
     upload_append(T, MediaId, SegmentId + 1, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret);
 
 upload_append([], MediaId, _, _, _,_,_)-> 
     {ok, MediaId}.
+
+
+%TODO: refactor finaolize and init
     
+upload_finalize(MediaId, Consumer, AccessToken, AccessTokenSecret)-> 
+        {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
+
+
+    
+    Headers =  [{"Accept", "*/*"},
+		{"Host","upload.twitter.com"},
+		{"Content-Type","application/x-www-form-urlencoded"},
+		{"Authorization",
+		 create_oauth_header([{"command", "FINALIZE"}, {"media_id", MediaId}],
+				     "https://upload.twitter.com/1.1/media/upload.json",
+				     ConsumerKey,
+				     ConsumerSecret,
+				     AccessToken, 
+				     AccessTokenSecret, 
+				     get_oauth_nonce(),
+				     get_oauth_timestamp(), 
+				     "Post")
+		}],
+
+
+    
+    {ok, Response} = httpc:request(post,
+			     {string:concat("https://upload.twitter.com/1.1/media/upload.json?command=FINALIZE&media_id=", MediaId),
+			      Headers,
+			      "application/x-www-form-urlencoded",
+			      []
+			     }, [], [{headers_as_is, true}]),
+    {{"HTTP/1.1",201,"Created"},_, Body}=Response,
+    MediaId.
+
 upload_init(Media, Consumer, AccessToken, AccessTokenSecret)-> 
 
     {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
@@ -205,7 +258,7 @@ upload_init(Media, Consumer, AccessToken, AccessTokenSecret)->
 				     get_oauth_timestamp(), 
 				     "Post")
 		}],
-
+    
     {ok, Response} = httpc:request(post,
 			     {string:concat(string:concat("https://upload.twitter.com/1.1/media/upload.json?command=INIT", string:concat("&total_bytes=", TotalBytes)), "&media_type=img%2Fpng"),
 			      Headers,
@@ -296,7 +349,6 @@ get_request(Url, Parameters, Consumer, AccessToken, AccessTokenSecret)->
 %roll yer own oauth
 
 escape_uri([C | Cs]) when C >= $a, C =< $z ->
-%    io:format("a-z:~p~n",[C]),
     [C | escape_uri(Cs)];
 escape_uri([C | Cs]) when C >= $A, C =< $Z ->
     [C | escape_uri(Cs)];
