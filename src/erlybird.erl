@@ -44,7 +44,6 @@ get_entire_timeline(Parameters, Consumer, AccessToken, AccessTokenSecret,  Limit
 	   
 	   
 	   
-	   io:format("last tweet ID: ~p~n", [LastTweetId]),
 	   Timeline = get_user_timeline(NewParameters, Consumer, AccessToken, AccessTokenSecret),
 	   case Timeline of
 	       [] ->
@@ -278,9 +277,7 @@ post(Tweet) ->
 
 tweet(Status, Images) ->
     MediaIds = lists:map(fun(X) ->  {ok, Media} = file:read_file(X), {ok, MediaId}=upload(Media), MediaId  end, Images),
-    io:format("~p~n", [MediaIds]),
     Csv=lists:foldl(fun(X, Acc) -> Acc ++ X ++ "," end, "", MediaIds),
-    io:format("~p~n", [Csv]),
     MediaIdsString = lists:sublist(Csv, length(Csv) -1),
 
     {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
@@ -289,7 +286,7 @@ tweet(Status, Images) ->
      EscapedStatus= escape_uri(Status),
     StatusParam=string:concat("status=", EscapedStatus),
    
-    io:format("~p~n", [MediaIdsString]),
+    
 
     Headers =  [{"Accept", "*/*"},
 		{"Host","api.twitter.com"},
@@ -434,7 +431,6 @@ sign(Parameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod)->
     ParameterString = create_parameter_string(Parameters),
     SignatureBaseString = create_signature_base_string(ParameterString, Url, HttpMethod),
     SigningKey= get_signing_key(ConsumerSecret, OauthTokenSecret),
-    io:format("~p~n",[crypto:hmac(sha, SigningKey, SignatureBaseString)]),
     base64:encode_to_string(crypto:hmac(sha, SigningKey, SignatureBaseString)).
 
 create_parameter_string(Parameters)->
@@ -500,8 +496,8 @@ get_test_parameters()->
 
 encode_atom_test()->
     EncodedUri = encode_parameters([{foo, bar}]),
-    io:format("~p~n", [EncodedUri]),
-     ?assert(EncodedUri  =:=  [{"foo","bar"}]).
+     io:format("~p~n", [EncodedUri]),
+    ?assert(EncodedUri  =:=  [{"foo","bar"}]).
 
 encode_int_test()->
     EncodedUri = encode_parameters([{foo, 1}]),
@@ -527,8 +523,7 @@ create_oauth_header_test()->
     HttpMethod="Post",
     OauthHeader  = create_oauth_header(RequestParameters, Url, ConsumerKey, ConsumerSecret, OauthToken, OauthTokenSecret, OauthNonce, OauthTimestamp, HttpMethod),
     ExpectedOauthHeader = "OAuth oauth_consumer_key=\"xvz1evFS4wEEPTGEFPHBog\", oauth_nonce=\"kYjzVBB8Y0ZFabxSWbWovY3uYSQ2pTgmZeNu2VS4cg\", oauth_signature=\"tnnArxj06cWHq44gCs1OSKk%2FjLY%3D\", oauth_signature_method=\"HMAC-SHA1\", oauth_timestamp=\"1318622958\", oauth_token=\"370773112-GmHxMAgYyLbNEtIKZeRNFsMKPR9EyMZeS9weJAEb\", oauth_version=\"1.0\"",
-    io:format("~n~p~n", [OauthHeader]),
-    io:format("~n~p~n", [ExpectedOauthHeader]),
+    
 
     ?assert(OauthHeader  =:= ExpectedOauthHeader).
 
