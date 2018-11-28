@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4]).
+-export([get_secrets/0, post/1, tweet/2, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -276,6 +276,35 @@ post(Tweet) ->
     {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
     post(Tweet, Consumer, AccessToken, AccessTokenSecret).
 
+tweet(Status, Images) ->
+    MediaIds = lists:map(fun(X) ->  {ok, Media} = file:read_file(X), {ok, MediaId}=upload(Media), MediaId  end, Images),
+    io:format("~p~n", [MediaIds]),
+    Csv=lists:foldl(fun(X, Acc) -> Acc ++ X ++ "," end, "", MediaIds),
+    io:format("~p~n", [Csv]),
+    MediaIdsString = lists:sublist(Csv, length(Csv) -1),
+
+    {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
+    {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
+   
+     EscapedStatus= escape_uri(Status),
+    StatusParam=string:concat("status=", EscapedStatus),
+   
+    io:format("~p~n", [MediaIdsString]),
+
+    Headers =  [{"Accept", "*/*"},
+		{"Host","api.twitter.com"},
+		{"Content-Type","application/x-www-form-urlencoded"},
+		{"Authorization",
+		 create_oauth_header([{"status", Status}, {"media_ids", MediaIdsString}], "https://api.twitter.com/1.1/statuses/update.json", ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, get_oauth_nonce(), get_oauth_timestamp(), "Post")}
+	       ],
+            httpc:request(post,
+		  {string:concat(string:concat(string:concat("https://api.twitter.com/1.1/statuses/update.json?", StatusParam), "&media_ids="), MediaIdsString),
+		   Headers,
+		   "application/x-www-form-urlencoded",
+		   []
+		  }, [], [{headers_as_is, true}]).
+
+
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 
     EscapedTweet= escape_uri(Tweet),
@@ -295,6 +324,10 @@ post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
 		   "application/x-www-form-urlencoded",
 		   []
 		  }, [], [{headers_as_is, true}]).
+
+
+
+
 
 get_tweet(TweetId)->
     get_tweet(TweetId,[]).
