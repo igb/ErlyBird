@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/1, tweet/2, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4]).
+-export([get_secrets/0, post/1, tweet/2, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4, add_alt_text/2, add_alt_text/5]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -276,7 +276,19 @@ post(Tweet) ->
     post(Tweet, Consumer, AccessToken, AccessTokenSecret).
 
 tweet(Status, Images) ->
-    MediaIds = lists:map(fun(X) ->  {ok, Media} = file:read_file(X), {ok, MediaId}=upload(Media), MediaId  end, Images),
+    MediaIds = lists:map(fun(X) -> 
+				 case X of
+				     {FileName, AltText} ->
+					 {ok, Media} = file:read_file(FileName),
+					 {ok, MediaId}=upload(Media),
+					 add_alt_text(MediaId, AltText),
+					 MediaId;
+				     _ ->
+					 {ok, Media} = file:read_file(X),
+					 {ok, MediaId}=upload(Media),
+					 MediaId
+				 end
+			 end, Images),
     Csv=lists:foldl(fun(X, Acc) -> Acc ++ X ++ "," end, "", MediaIds),
     MediaIdsString = lists:sublist(Csv, length(Csv) -1),
 
@@ -300,6 +312,37 @@ tweet(Status, Images) ->
 		   "application/x-www-form-urlencoded",
 		   []
 		  }, [], [{headers_as_is, true}]).
+
+add_alt_text(MediaId, AltText)->
+    {Consumer, AccessToken, AccessTokenSecret}=get_secrets(),
+    add_alt_text(MediaId, AltText, Consumer, AccessToken, AccessTokenSecret).
+
+add_alt_text(MediaId, AltText, Consumer, AccessToken, AccessTokenSecret)-> 
+    {ConsumerKey, ConsumerSecret, hmac_sha1}=Consumer,
+   Json= "{\"media_id\":\"" ++ MediaId ++ "\", \"alt_text\": {\"text\":\"" ++ AltText ++ "\"}}",
+    Headers =  [{"Accept", "*/*"},
+		{"Host","upload.twitter.com"},
+		{"Content-Type","application/json"},
+		{"Authorization",
+		 create_oauth_header_with_body(Json,
+					       "https://upload.twitter.com/1.1/media/metadata/create.json",
+					       ConsumerKey, 
+					       ConsumerSecret, 
+					       AccessToken,
+					       AccessTokenSecret,
+					       get_oauth_nonce(),
+					       get_oauth_timestamp(), 
+					       "Post")},
+		 {"Content-Length", integer_to_list(length(Json))}],
+
+
+    httpc:request(post,
+		  {"https://upload.twitter.com/1.1/media/metadata/create.json",
+		   Headers,
+		   "application/json",
+		   Json
+		  }, 
+		  [], [{headers_as_is, true}, {body_format, string}]).
 
 
 post(Tweet, Consumer, AccessToken, AccessTokenSecret)->
@@ -423,6 +466,26 @@ create_oauth_header(RequestParameters, Url, ConsumerKey, ConsumerSecret, OauthTo
     OauthSignature = sign(SigningParameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod),
     SignedOauthParameters = lists:append(OauthParameters, [{"oauth_signature", OauthSignature}]),
     create_oauth_header_string(SignedOauthParameters).
+
+create_oauth_header_with_body(RequestBody, Url, ConsumerKey, ConsumerSecret, OauthToken, OauthTokenSecret, OauthNonce, OauthTimestamp, HttpMethod)->
+    
+    OauthSignatureMethod = "HMAC-SHA1",
+    OauthVersion = "1.0",
+    
+    
+    OauthParameters = [ {"oauth_body_hash", base64:encode_to_string(crypto:hash(sha, RequestBody))},
+			{"oauth_consumer_key", ConsumerKey},
+			{"oauth_nonce",OauthNonce},
+			{"oauth_signature_method", OauthSignatureMethod},
+			{"oauth_timestamp", OauthTimestamp},
+			{"oauth_token", OauthToken},
+			{"oauth_version",OauthVersion}],
+    SigningParameters = lists:append(OauthParameters, []),
+    OauthSignature = sign(SigningParameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod),
+    SignedOauthParameters = lists:append(OauthParameters, [{"oauth_signature", OauthSignature}]),
+    create_oauth_header_string(SignedOauthParameters).
+   
+   
 
     
 
