@@ -1,5 +1,5 @@
 -module(erlybird).
--export([get_secrets/0, post/1, tweet/2, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4, add_alt_text/2, add_alt_text/5]).
+-export([get_secrets/0, post/1, tweet/2, post/4,get_user_timeline/4, get_entire_timeline/4,get_entire_timeline/5, get_tweet/1, get_tweet/2, get_tweet/5, hex_digit/1, escape_byte/1,create_signature_base_string/3,create_oauth_header_string/1,create_oauth_header/9, sign/5, create_parameter_string/1, upload/1, upload/4, add_alt_text/2, add_alt_text/5, generate_multipart__body/2, chunk/2, upload_append/7, upload_append/8]).
 
 -ifdef(TEST).
 -include_lib("eunit/include/eunit.hrl").
@@ -149,11 +149,15 @@ generate_multipart__body([H|T], Boundary, Acc)->
 generate_multipart__body([], Boundary, Acc) ->
     string:concat(Acc, string:concat(string:concat("--", Boundary), "--\r\n")).
 
+
+
+upload_append(MediaData, MediaId, SegmentId, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret)-> 
+   Url =  "https://upload.twitter.com/1.1/media/upload.json",
+    erlybird:upload_append(MediaData, MediaId, SegmentId, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, Url).
+   
+
     
-
-upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret)-> 
-
-
+upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret, Url)-> 
 
     
     Params = [{"segment_index", integer_to_list(SegmentId)},
@@ -162,10 +166,7 @@ upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, Ac
 	      {"media", base64:decode_to_string(MediaData)}
 	      ],
     
-    Url =  "https://upload.twitter.com/1.1/media/upload.json",
-
-%    Url =  "http://127.0.0.1:8080/postest/uploadtest",
-
+ 
     MultiPartBody=generate_multipart__body(Params, "00Twurl788615393766630399lruwT99"),
     
 
@@ -198,8 +199,10 @@ upload_append([MediaData|T], MediaId, SegmentId, ConsumerKey, ConsumerSecret, Ac
 
     upload_append(T, MediaId, SegmentId + 1, ConsumerKey, ConsumerSecret, AccessToken, AccessTokenSecret);
 
-upload_append([], MediaId, _, _, _,_,_)-> 
+upload_append([], MediaId, _, _, _,_,_,_)-> 
     {ok, MediaId}.
+
+
 
 
 %TODO: refactor finaolize and init
@@ -494,7 +497,7 @@ sign(Parameters, Url, ConsumerSecret, OauthTokenSecret, HttpMethod)->
     ParameterString = create_parameter_string(Parameters),
     SignatureBaseString = create_signature_base_string(ParameterString, Url, HttpMethod),
     SigningKey= get_signing_key(ConsumerSecret, OauthTokenSecret),
-    base64:encode_to_string(crypto:hmac(sha, SigningKey, SignatureBaseString)).
+    base64:encode_to_string(crypto:mac(hmac, sha, SigningKey, SignatureBaseString)).
 
 create_parameter_string(Parameters)->
     EncodedParameters = encode_parameters(Parameters),
